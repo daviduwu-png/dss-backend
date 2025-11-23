@@ -16,7 +16,7 @@ class Client(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'client'
+        db_table = 'project_mgmt"."client'
 
 
 class Defect(models.Model):
@@ -33,7 +33,7 @@ class Defect(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'defect'
+        db_table = 'project_mgmt"."defect'
 
 
 class Employee(models.Model):
@@ -46,7 +46,7 @@ class Employee(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'employee'
+        db_table = 'project_mgmt"."employee'
 
 
 class Project(models.Model):
@@ -60,7 +60,7 @@ class Project(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'project'
+        db_table = 'project_mgmt"."project'
 
 
 class Resource(models.Model):
@@ -74,7 +74,7 @@ class Resource(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'resource'
+        db_table = 'project_mgmt"."resource'
 
 
 class Risk(models.Model):
@@ -88,7 +88,7 @@ class Risk(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'risk'
+        db_table = 'project_mgmt"."risk'
 
 
 class Task(models.Model):
@@ -106,7 +106,7 @@ class Task(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'task'
+        db_table = 'project_mgmt"."task'
 
 
 class TimeEntry(models.Model):
@@ -119,6 +119,5 @@ class TimeEntry(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'time_entry'
-
+        db_table = 'project_mgmt"."time_entry'
 
