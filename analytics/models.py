@@ -17,7 +17,7 @@ class DimClient(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_client'
+        db_table = 'dwh"."dim_client'
 
 
 class DimDate(models.Model):
@@ -31,7 +31,7 @@ class DimDate(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_date'
+        db_table = 'dwh"."dim_date'
 
 
 class DimEmployee(models.Model):
@@ -43,7 +43,7 @@ class DimEmployee(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_employee'
+        db_table = 'dwh"."dim_employee'
 
 
 class DimProject(models.Model):
@@ -55,7 +55,7 @@ class DimProject(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_project'
+        db_table = 'dwh"."dim_project'
 
 
 class DimResource(models.Model):
@@ -68,7 +68,7 @@ class DimResource(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_resource'
+        db_table = 'dwh"."dim_resource'
 
 
 class DimStatus(models.Model):
@@ -79,7 +79,7 @@ class DimStatus(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_status'
+        db_table = 'dwh"."dim_status'
 
 
 class DimTask(models.Model):
@@ -91,7 +91,7 @@ class DimTask(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'dim_task'
+        db_table = 'dwh"."dim_task'
 
 
 class FactBudget(models.Model):
@@ -103,7 +103,7 @@ class FactBudget(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'fact_budget'
+        db_table = 'dwh"."fact_budget'
 
 
 class FactDefectSummary(models.Model):
@@ -115,7 +115,7 @@ class FactDefectSummary(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'fact_defect_summary'
+        db_table = 'dwh"."fact_defect_summary'
 
 
 class FactProgressSnapshot(models.Model):
@@ -126,7 +126,7 @@ class FactProgressSnapshot(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'fact_progress_snapshot'
+        db_table = 'dwh"."fact_progress_snapshot'
 
 
 class FactResource(models.Model):
@@ -139,7 +139,7 @@ class FactResource(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'fact_resource'
+        db_table = 'dwh"."fact_resource'
 
 
 class FactRisk(models.Model):
@@ -153,7 +153,7 @@ class FactRisk(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'fact_risk'
+        db_table = 'dwh"."fact_risk'
 
 
 class FactTimelog(models.Model):
@@ -165,4 +165,4 @@ class FactTimelog(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'fact_timelog'
+        db_table = 'dwh"."fact_timelog'
