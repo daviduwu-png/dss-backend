@@ -122,6 +122,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://dss-frontend-pi.vercel.app",
 ]
 
+CORS_ALLOW_CREDENTIALS = True
 # Opción temporal 
 # CORS_ALLOW_ALL_ORIGINS = True 
 
