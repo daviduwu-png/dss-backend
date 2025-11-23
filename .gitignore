@@ -1,0 +1,21 @@
+# Ignorar entornos virtuales
+env/
+venv/
+.env
+
+# Ignorar CUALQUIER base de datos local
+*.sqlite3
+*.sqlite3-journal
+
+# Ignorar archivos compilados de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorar archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar carpeta de estáticos (se genera sola en el servidor)
+staticfiles/
