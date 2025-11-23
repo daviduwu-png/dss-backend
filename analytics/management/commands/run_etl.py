@@ -37,8 +37,20 @@ class Command(BaseCommand):
     def get_engine(self, db_alias):
         """Crea un motor SQLAlchemy usando la configuración de Django."""
         db_conf = settings.DATABASES[db_alias]
-        # Construye la URI de conexión: postgresql://user:pass@host:port/dbname
-        db_url = f"postgresql://{db_conf['USER']}:{db_conf['PASSWORD']}@{db_conf['HOST']}:{db_conf['PORT']}/{db_conf['NAME']}"
+        
+        # Extraemos los valores con cuidado
+        user = db_conf.get('USER', '')
+        password = db_conf.get('PASSWORD', '')
+        host = db_conf.get('HOST', '')
+        port = db_conf.get('PORT', '')
+        name = db_conf.get('NAME', '')
+        
+        # Si el puerto está vacío, forzamos el 5432
+        if not port:
+            port = '5432'
+            
+        # Construye la URI de conexión
+        db_url = f"postgresql://{user}:{password}@{host}:{port}/{name}"
         return create_engine(db_url)
 
     def extract_data(self, engine):
