@@ -19,26 +19,31 @@ from .serializers import (
     BSCResponseSerializer
 )
 
+# --- IMPORTAMOS LOS MODELOS NECESARIOS ---
 from .models import (
     FactBudget, FactRisk, FactDefectSummary, 
-    FactTimelog, DimEmployee, DimProject
+    FactTimelog, FactProgressSnapshot, # <--- Nuevo
+    DimEmployee, DimProject, DimTask   # <--- Nuevo
 )
 
 class DashboardKPIViewSet(viewsets.ViewSet):
     """
     Endpoint para calcular KPIs de alto nivel para el Dashboard de Misión.
+    Utiliza métricas de Valor Ganado (EVM) reales basadas en Snapshots de progreso.
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
         responses=DashboardKPISerializer(many=True),
         summary="Obtener KPIs de Misión",
-        description="Devuelve una lista de proyectos con sus métricas EVM (Budget, Cost, CPI)."
+        description="Devuelve una lista de proyectos con sus métricas EVM (Budget, Cost, EV, CV, CPI)."
     )
     def list(self, request):
+        # 1. Agrupamos por la Key del DWH para poder cruzar con Dimensiones
         kpi_data = FactBudget.objects.values(
-            'project_key__project_id', 
-            'project_key__name'        
+            'project_key',                 # ID del DWH (Surrogate Key)
+            'project_key__project_id',     # ID Original (Negocio)
+            'project_key__name'            # Nombre
         ).annotate(
             total_budget=Max('budget_allocated'), 
             total_ac=Sum('cost_actual')
@@ -46,17 +51,67 @@ class DashboardKPIViewSet(viewsets.ViewSet):
 
         results = []
         for item in kpi_data:
-            budget = item['total_budget'] or 0
-            ac = item['total_ac'] or 0
-            cv = budget - ac 
+            # Datos Financieros Básicos
+            budget_bac = float(item['total_budget'] or 0) # BAC: Budget at Completion
+            ac = float(item['total_ac'] or 0)             # AC: Actual Cost
+            project_key = item['project_key']
+
+            # --- CÁLCULO DEL VALOR GANADO (EV) REAL ---
             
+            # A. Obtener tareas asociadas a este proyecto en el DWH
+            tasks = DimTask.objects.filter(project_key=project_key)
+            
+            total_planned_hours_project = 0
+            earned_hours_project = 0
+
+            for task in tasks:
+                planned = float(task.planned_hours or 0)
+                total_planned_hours_project += planned
+
+                # B. Buscar el último snapshot de progreso disponible para la tarea
+                last_snapshot = FactProgressSnapshot.objects.filter(
+                    task_key=task
+                ).order_by('-date_key').first()
+                
+                percent_complete = 0
+                if last_snapshot:
+                    percent_complete = last_snapshot.percent_complete or 0
+                
+                # C. Horas Ganadas = Horas Planeadas * % Avance
+                earned_hours_project += planned * (percent_complete / 100.0)
+
+            # D. Calcular % de Avance Físico Ponderado del Proyecto
+            if total_planned_hours_project > 0:
+                project_percent = earned_hours_project / total_planned_hours_project
+            else:
+                project_percent = 0
+
+            # E. Calcular EV (Valor Ganado Monetario)
+            # EV = Presupuesto Total * % Avance Real
+            ev = budget_bac * project_percent
+
+            # --- CÁLCULO DE KPIs EVM ---
+            
+            # Cost Variance (CV) = EV - AC
+            # Si es negativo, gastamos más de lo que hemos avanzado (Malo)
+            cv = ev - ac 
+            
+            # Cost Performance Index (CPI) = EV / AC
+            # Si es < 1, somos ineficientes. Si es > 1, somos eficientes.
+            if ac > 0:
+                cpi = ev / ac
+            else:
+                # Si no hay costo, y hay avance, el CPI es infinito (perfecto). 
+                # Si no hay avance, es 0.
+                cpi = 1.0 if ev > 0 else 0
+
             results.append({
                 'id': item['project_key__project_id'],
                 'name': item['project_key__name'],
-                'budget_allocated': budget,
-                'actual_cost': ac,
-                'cost_variance': cv,
-                'cpi': round(budget / ac, 2) if ac > 0 else 0 
+                'budget_allocated': round(budget_bac, 2),
+                'actual_cost': round(ac, 2),
+                'cost_variance': round(cv, 2),
+                'cpi': round(cpi, 2)
             })
 
         return Response(results)
@@ -129,6 +184,9 @@ class BSCViewSet(viewsets.ViewSet):
         )
         t_budget = fin_agg['total_budget'] or 0
         t_cost = fin_agg['total_cost'] or 0
+        
+        # Para el BSC global, usamos una aproximación simple agregada
+        # (O podrías implementar la lógica de EV sumado aquí también si quieres ser purista)
         cpi_global = round(t_budget / t_cost, 2) if t_cost > 0 else 0
 
         # 2. Cliente
