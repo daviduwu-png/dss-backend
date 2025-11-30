@@ -21,7 +21,7 @@ from .serializers import (
 
 from .models import (
     FactBudget, FactRisk, FactDefectSummary, 
-    FactTimelog, DimEmployee, DimProject
+    FactTimelog, DimEmployee, DimProject, DimTask, FactProgressSnapshot
 )
 
 class DashboardKPIViewSet(viewsets.ViewSet):
@@ -36,27 +36,68 @@ class DashboardKPIViewSet(viewsets.ViewSet):
         description="Devuelve una lista de proyectos con sus métricas EVM (Budget, Cost, CPI)."
     )
     def list(self, request):
-        kpi_data = FactBudget.objects.values(
-            'project_key__project_id', 
-            'project_key__name'        
-        ).annotate(
-            total_budget=Max('budget_allocated'), 
-            total_ac=Sum('cost_actual')
-        ).order_by('project_key__name')
+        
+        # Obtener la fecha del ÚLTIMO snapshot disponible
+        latest_snapshot_date = FactProgressSnapshot.objects.aggregate(
+            max_date=Max('date_key')
+        )['max_date'] or now().date()
 
+        # Datos Financieros (Budget y Costo Real AC)
+        financials = DimProject.objects.annotate(
+            bac=Max('factbudget__budget_allocated'), 
+            ac=Sum('factbudget__cost_actual')        
+        ).values('project_key', 'project_id', 'name', 'bac', 'ac')
+        
+        fin_map = {p['project_key']: p for p in financials}
+
+        # Datos de Progreso Real (Valor Ganado EV)
+        progress_data = DimTask.objects.filter(
+            factprogresssnapshot__date_key=latest_snapshot_date
+        ).values('project_key').annotate(
+            total_planned=Sum('planned_hours'),
+            # EV en Horas = Horas Planificadas de la Tarea * % Completado Real de la Tarea
+            earned_hours=Sum(F('planned_hours') * F('factprogresssnapshot__percent_complete') / 100.0)
+        )
+
+        prog_map = {
+            p['project_key']: {
+                'planned': p['total_planned'] or 0, 
+                'earned': p['earned_hours'] or 0
+            } for p in progress_data
+        }
+
+        # Combinar y Calcular
         results = []
-        for item in kpi_data:
-            budget = item['total_budget'] or 0
-            ac = item['total_ac'] or 0
-            cv = budget - ac 
+        for p_key, p_data in fin_map.items():
+            budget = p_data['bac'] or 0
+            ac = p_data['ac'] or 0
+            
+            p_prog = prog_map.get(p_key, {'planned': 0, 'earned': 0})
+            total_planned = p_prog['planned']
+            total_earned = p_prog['earned']
+
+            # % Avance Ponderado del Proyecto = (Horas Ganadas Totales / Horas Planificadas Totales)
+            if total_planned > 0:
+                percent_complete = total_earned / total_planned
+            else:
+                percent_complete = 0
+
+            # EV Monetario = Presupuesto Total * % Avance
+            ev = budget * percent_complete
+
+            # CV = EV - AC
+            cv = ev - ac 
+            
+            # CPI = EV / AC
+            cpi = round(ev / ac, 2) if ac > 0 else 0 
             
             results.append({
-                'id': item['project_key__project_id'],
-                'name': item['project_key__name'],
+                'id': p_data['project_id'], 
+                'name': p_data['name'],
                 'budget_allocated': budget,
                 'actual_cost': ac,
-                'cost_variance': cv,
-                'cpi': round(budget / ac, 2) if ac > 0 else 0 
+                'cost_variance': round(cv, 2),
+                'cpi': cpi
             })
 
         return Response(results)
@@ -122,23 +163,65 @@ class BSCViewSet(viewsets.ViewSet):
     )
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
-        # 1. Financiera
-        fin_agg = FactBudget.objects.aggregate(
-            total_budget=Sum('budget_allocated'),
-            total_cost=Sum('cost_actual')
-        )
-        t_budget = fin_agg['total_budget'] or 0
-        t_cost = fin_agg['total_cost'] or 0
-        cpi_global = round(t_budget / t_cost, 2) if t_cost > 0 else 0
+        
+        # Financiera - CPI GLOBAL
+        # Fecha de corte para el avance
+        latest_snapshot_date = FactProgressSnapshot.objects.aggregate(
+            max_date=Max('date_key')
+        )['max_date'] or now().date()
 
-        # 2. Cliente
+        # Obtener Finanzas Globales (agrupado por proyecto para unir después)
+        financials_query = DimProject.objects.annotate(
+            bac=Max('factbudget__budget_allocated'),
+            ac=Sum('factbudget__cost_actual')
+        ).values('project_key', 'bac', 'ac')
+        
+        fin_map = {
+            item['project_key']: {'bac': item['bac'] or 0, 'ac': item['ac'] or 0} 
+            for item in financials_query
+        }
+
+        # Obtener Progreso Global (filtrado por la fecha más reciente)
+        progress_query = DimTask.objects.filter(
+            factprogresssnapshot__date_key=latest_snapshot_date
+        ).values('project_key').annotate(
+            total_planned=Sum('planned_hours'),
+            earned_hours=Sum(F('planned_hours') * F('factprogresssnapshot__percent_complete') / 100.0)
+        )
+
+        total_ev_global = 0 
+        total_ac_global = 0 
+
+        for item in progress_query:
+            p_key = item['project_key']
+            
+            if p_key in fin_map:
+                fin_data = fin_map[p_key]
+                t_planned = item['total_planned'] or 0
+                t_earned = item['earned_hours'] or 0
+                
+                # Cálculo de EV Individual
+                pct_complete = (t_earned / t_planned) if t_planned > 0 else 0
+                project_ev = fin_data['bac'] * pct_complete
+                
+                # Suma a totales globales
+                total_ev_global += project_ev
+                total_ac_global += fin_data['ac']
+
+        # Cálculo Final CPI Global
+        if total_ac_global > 0:
+            cpi_global = round(total_ev_global / total_ac_global, 2)
+        else:
+            cpi_global = 1.0 if total_ev_global > 0 else 0.0
+
+        # Cliente 
         risk_agg = FactRisk.objects.aggregate(
             avg_impact=Avg('impact_score'),
             total_risks=Count('risk_id')
         )
         avg_risk_impact = round(risk_agg['avg_impact'] or 0, 2)
 
-        # 3. Procesos
+        # Procesos 
         quality_agg = FactDefectSummary.objects.aggregate(
             total_new=Sum('defect_count_new'),
             total_resolved=Sum('defect_count_resolved')
@@ -147,7 +230,7 @@ class BSCViewSet(viewsets.ViewSet):
         t_res = quality_agg['total_resolved'] or 0
         resolution_rate = round((t_res / t_new) * 100, 1) if t_new > 0 else 100
 
-        # 4. Aprendizaje
+        # Aprendizaje 
         start_date = now().date() - timedelta(days=30)
         time_agg = FactTimelog.objects.filter(date_key__gte=start_date).aggregate(
             total_worked=Sum('hours_worked')
