@@ -38,7 +38,7 @@ class DashboardKPIViewSet(viewsets.ViewSet):
     )
     def list(self, request):
         try:
-            
+            # 1. Determinar la fecha de corte (último snapshot o hoy)
             try:
                 latest_snapshot_date = FactProgressSnapshot.objects.aggregate(
                     max_date=Max('date_key')
@@ -46,27 +46,26 @@ class DashboardKPIViewSet(viewsets.ViewSet):
             except Exception:
                 latest_snapshot_date = now().date()
 
-            
+            # 2. Obtener datos financieros (Presupuesto y Costo Real)
+            # CORRECCIÓN: Se agrega '_set' a 'factbudget' para acceder a la relación inversa correctamente.
             financials = DimProject.objects.annotate(
-                bac=Max('factbudget__budget_allocated'),
-                ac=Sum('factbudget__cost_actual')
+                bac=Max('factbudget_set__budget_allocated'),
+                ac=Sum('factbudget_set__cost_actual')
             ).values('project_key', 'project_id', 'name', 'bac', 'ac')
             
-            
+            # Crear mapa para acceso rápido por ID de proyecto
             fin_map = {p['project_key']: p for p in financials}
 
-            
+            # 3. Obtener Tareas y Progreso para calcular EV (Earned Value)
             tasks = DimTask.objects.values('task_key', 'project_key', 'planned_hours')
-            
             
             snapshots = FactProgressSnapshot.objects.filter(
                 date_key=latest_snapshot_date
             ).values('task_key', 'percent_complete')
             
-            
             snapshot_map = {s['task_key']: s['percent_complete'] for s in snapshots}
 
-            
+            # Calcular progreso ponderado por proyecto
             project_progress = {}
 
             for task in tasks:
@@ -74,10 +73,9 @@ class DashboardKPIViewSet(viewsets.ViewSet):
                 t_key = task['task_key']
                 planned = float(task['planned_hours'] or 0)
                 
-                
                 pct = snapshot_map.get(t_key, 0)
                 
-              
+                # EV parcial de la tarea = Horas Planeadas * % Completado
                 earned = planned * (pct / 100.0)
 
                 if p_key not in project_progress:
@@ -86,7 +84,7 @@ class DashboardKPIViewSet(viewsets.ViewSet):
                 project_progress[p_key]['planned'] += planned
                 project_progress[p_key]['earned'] += earned
 
-            
+            # 4. Consolidar Resultados y Calcular KPIs
             results = []
             for p_key, p_data in fin_map.items():
                 budget = float(p_data['bac'] or 0)
@@ -96,18 +94,24 @@ class DashboardKPIViewSet(viewsets.ViewSet):
                 total_planned = prog['planned']
                 total_earned = prog['earned']
 
-               
+                # CORRECCIÓN: Protección contra división por cero si no hay horas planeadas
                 if total_planned > 0:
                     percent_complete = total_earned / total_planned
                 else:
+                    # Si no hay tareas con horas estimadas, asumimos 0 avance para ser conservadores
                     percent_complete = 0.0
 
-                
+                # Valor Ganado (EV) monetario
                 ev = budget * percent_complete
 
-                
+                # Variación de Costo (CV) y Índice de Rendimiento de Costo (CPI)
                 cv = ev - ac 
-                cpi = round(ev / ac, 2) if ac > 0 else 0.0
+                
+                # Si AC es 0, el CPI es 1 (rendimiento perfecto) o 0 si no hay avance.
+                if ac > 0:
+                    cpi = round(ev / ac, 2)
+                else:
+                    cpi = 1.0 if ev > 0 else 0.0
                 
                 results.append({
                     'id': p_data['project_id'], 

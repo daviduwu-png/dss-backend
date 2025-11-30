@@ -77,9 +77,13 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Error extrayendo {name}: {e}"))
                 return None
         
-        # Extracción especial para presupuesto
         try:
-            dataframes["project_budget"] = pd.read_sql("SELECT project_id, budget, start_date FROM project_mgmt.project", engine)
+            query_budget = """
+                SELECT project_id, budget, 
+                COALESCE(start_date, CURRENT_DATE) as start_date 
+                FROM project_mgmt.project
+            """
+            dataframes["project_budget"] = pd.read_sql(query_budget, engine)
             self.stdout.write(f"   > Extraído project_budget: {len(dataframes['project_budget'])} filas")
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error extrayendo budget: {e}"))
