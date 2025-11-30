@@ -104,7 +104,7 @@ class Command(BaseCommand):
                         f"Proyecto {fake.bs().title()}",
                         start_date,
                         end_date,
-                        random.randint(50000, 1000000),
+                        random.randint(15000, 60000),
                         random.choice(PROJECT_STATUSES)
                     )
                 )
